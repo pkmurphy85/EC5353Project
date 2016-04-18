@@ -183,16 +183,20 @@ void QSSnake::Canvas::timerEvent(QTimerEvent* event) {
 
 //====================================================================
 void QSSnake::Canvas::checkDirectionFile() {
-    QFile file("test");
+    QFile file("/dev/mygpio");
     if (!file.open(QIODevice::ReadOnly | QIODevice::Text))
         return;
 
     QTextStream in(&file);
     QString line = in.readLine();
-    int tsPart = line.split(" ")[0].toInt();
+    long tsPart = line.split(" ")[0].toLong();
     QString dirPart = line.split(" ")[1];
-	//qDebug() << line.split(" ")[0];
-	//qDebug() << line.split(" ")[1];
+	printf("Jiffies: %u\n", tsPart);
+	//printf("Direction: %c\n", dirPart);
+	qDebug() << dirPart;
+	printf("Time Stamp: %u\n", timeStamp);
+
+
 
     
 /*Aboslute Directions
