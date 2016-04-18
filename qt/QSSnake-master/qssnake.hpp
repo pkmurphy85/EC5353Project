@@ -35,9 +35,11 @@ class QSSnake : public QMainWindow {
 				int snake_size;
 				int timerId;
 				QLabel* score_label;
+				int timeStamp;
 				void paintEvent(QPaintEvent* event);
 				void keyPressEvent(QKeyEvent* event);
 				void timerEvent(QTimerEvent* event);
+				void checkDirectionFile();
 				void moveSnake();
 				void moveBonus();
 				void locateFood();

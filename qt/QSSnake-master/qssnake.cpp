@@ -12,6 +12,7 @@
 #include <QTextStream>
 #include <iostream>
 #include <ctime>
+#include <QDebug>
 using namespace std;
 
 QSSnake::QSSnake() : QMainWindow(0, 0) {
@@ -42,6 +43,8 @@ QSSnake::QSSnake() : QMainWindow(0, 0) {
 
 	connect(quit, SIGNAL(triggered()), qApp, SLOT(quit()));
 	connect(new_game, SIGNAL(triggered()), this, SLOT(startGame()));
+	
+	//Autostart
 
 	QLabel* scoreLabel = new QLabel("");
 	tool_bar->addSeparator();
@@ -51,9 +54,7 @@ QSSnake::QSSnake() : QMainWindow(0, 0) {
 	setCentralWidget(canvas);
 
 	srand(time(NULL));
-	//Autostart
-	startGame();
-
+  	startGame();
 }
 
 void QSSnake::startGame() {
@@ -79,7 +80,7 @@ QSSnake::Canvas::Canvas(QWidget* parent, QLabel* score_label) : QWidget(parent) 
 void QSSnake::Canvas::initGame() {
 	if(timerId > 0)
 		killTimer(timerId);
-	direction = 0x00;
+	direction = 0x01;
 	dots_size = 8;
 	in_game = false;
 	score = 0;
@@ -96,6 +97,8 @@ void QSSnake::Canvas::initGame() {
 	snake[0].setX(((width() / dots_size) / 2) * dots_size);
 	snake[0].setY(((height() / dots_size) / 2) * dots_size);
 	locateFood();
+	//TimeStamp
+	timeStamp = 0;
 }
 
 void QSSnake::Canvas::paintEvent(QPaintEvent* event) {
@@ -161,6 +164,7 @@ void QSSnake::Canvas::keyPressEvent(QKeyEvent* event) {
 }
 
 void QSSnake::Canvas::timerEvent(QTimerEvent* event) {
+	checkDirectionFile();
 	moveSnake();
 	checkCollisions();
 	ignore_keys = false;
@@ -177,7 +181,7 @@ void QSSnake::Canvas::timerEvent(QTimerEvent* event) {
 	repaint();
 }
 
-//FILE CONTROLS========================================================
+//====================================================================
 void QSSnake::Canvas::checkDirectionFile() {
     QFile file("test");
     if (!file.open(QIODevice::ReadOnly | QIODevice::Text))
@@ -185,11 +189,17 @@ void QSSnake::Canvas::checkDirectionFile() {
 
     QTextStream in(&file);
     QString line = in.readLine();
+    int tsPart = line.split(" ")[0].toInt();
+    QString dirPart = line.split(" ")[1];
+	//qDebug() << line.split(" ")[0];
+	//qDebug() << line.split(" ")[1];
+
     
-    if(line == "U"){
+/*Aboslute Directions
+    if(line == "R"){
 		if(direction == 0x04 && snake_size > 1)
 		return;
-		direction = 0x01;	
+		direction = 0x01;
 		ignore_keys = true;
 	}
 	else if(line == "R"){
@@ -209,8 +219,46 @@ void QSSnake::Canvas::checkDirectionFile() {
 		return;
 		direction = 0x08;
 		ignore_keys = true;
+	}*/
+    
+//Relative to Absolute Directions
+if(tsPart>timeStamp){
+	timeStamp = tsPart; /*update timeStamp*/
+    if(direction == 0x01 && dirPart == "R"){
+		direction = 0x02;	
+		ignore_keys = true;
+	}
+	else if(direction == 0x02 && dirPart == "R"){
+		direction = 0x04;
+		ignore_keys = true;
+	}
+	else if(direction == 0x04 && dirPart == "R"){
+		direction = 0x08;
+		ignore_keys = true;
+	}
+	else if(direction == 0x08 && dirPart == "R"){
+		direction = 0x01;
+		ignore_keys = true;
+	}
+	else if(direction == 0x01 && dirPart == "L"){
+		direction = 0x08;	
+		ignore_keys = true;
+	}
+	else if(direction == 0x02 && dirPart == "L"){
+		direction = 0x01;
+		ignore_keys = true;
+	}
+	else if(direction == 0x04 && dirPart == "L"){
+		direction = 0x02;
+		ignore_keys = true;
+	}
+	else if(direction == 0x08 && dirPart == "L"){
+		direction = 0x04;
+		ignore_keys = true;
 	}
 }
+}
+
 //=====================================================================
 
 void QSSnake::Canvas::moveSnake() {
