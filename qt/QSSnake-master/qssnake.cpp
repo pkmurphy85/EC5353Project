@@ -8,6 +8,8 @@
 #include <QPainter>
 #include <QLayout>
 #include <QHBoxLayout>
+#include <QFile>
+#include <QTextStream>
 #include <iostream>
 #include <ctime>
 using namespace std;
@@ -49,6 +51,9 @@ QSSnake::QSSnake() : QMainWindow(0, 0) {
 	setCentralWidget(canvas);
 
 	srand(time(NULL));
+	//Autostart
+	startGame();
+
 }
 
 void QSSnake::startGame() {
@@ -171,6 +176,42 @@ void QSSnake::Canvas::timerEvent(QTimerEvent* event) {
 	updateScoreLabel();
 	repaint();
 }
+
+//FILE CONTROLS========================================================
+void QSSnake::Canvas::checkDirectionFile() {
+    QFile file("test");
+    if (!file.open(QIODevice::ReadOnly | QIODevice::Text))
+        return;
+
+    QTextStream in(&file);
+    QString line = in.readLine();
+    
+    if(line == "U"){
+		if(direction == 0x04 && snake_size > 1)
+		return;
+		direction = 0x01;	
+		ignore_keys = true;
+	}
+	else if(line == "R"){
+		if(direction == 0x08 && snake_size > 1)
+		return;
+		direction = 0x02;
+		ignore_keys = true;
+	}
+	else if(line == "D"){
+		if(direction == 0x01 && snake_size > 1)
+		return;
+		direction = 0x04;
+		ignore_keys = true;
+	}
+	else if(line =="L"){
+		if(direction == 0x02 && snake_size > 1)
+		return;
+		direction = 0x08;
+		ignore_keys = true;
+	}
+}
+//=====================================================================
 
 void QSSnake::Canvas::moveSnake() {
 	if(direction == 0)
