@@ -136,7 +136,8 @@ class Thread : public QThread
 
 //Bulk of this code from https://github.com/Regalis/QSSnake. 
 QSSnake::QSSnake() : QMainWindow(0, 0) {
-
+	
+	// Window Setup
 	resize(475, 235);
 	setMinimumSize(475, 235);
 	setMaximumSize(475, 235);
@@ -170,11 +171,10 @@ QSSnake::QSSnake() : QMainWindow(0, 0) {
 	canvas = new Canvas(this, scoreLabel);
 	setCentralWidget(canvas);
 
-	//thread created for i2c 
+	//thread created to run i2c read in parallel to game
 	Thread *thread = new Thread;
 	thread->start();
 	
-
 	srand(time(NULL));
   	startGame();
 }
@@ -188,6 +188,7 @@ void QSSnake::keyPressEvent(QKeyEvent* event) {
 	canvas->keyPressEvent(event);
 }
 
+// Game parameters
 QSSnake::Canvas::Canvas(QWidget* parent, QLabel* score_label) : QWidget(parent) {
 	snake = NULL;
 	timerId = -1;
@@ -199,6 +200,7 @@ QSSnake::Canvas::Canvas(QWidget* parent, QLabel* score_label) : QWidget(parent) 
 	score_label->show();
 }
 
+// Game initializations
 void QSSnake::Canvas::initGame() {
 	if(timerId > 0)
 		killTimer(timerId);
@@ -223,6 +225,7 @@ void QSSnake::Canvas::initGame() {
 	timeStamp = 0;
 }
 
+// Draw the snake
 void QSSnake::Canvas::paintEvent(QPaintEvent* event) {
 	if(!in_game)
 		return;
@@ -250,6 +253,7 @@ void QSSnake::Canvas::paintEvent(QPaintEvent* event) {
 
 }
 
+// Read key press (NOT USED...)
 void QSSnake::Canvas::keyPressEvent(QKeyEvent* event) {
 	if(ignore_keys)
 		return;
@@ -285,6 +289,7 @@ void QSSnake::Canvas::keyPressEvent(QKeyEvent* event) {
 	}
 }
 
+// Timer to check direction
 void QSSnake::Canvas::timerEvent(QTimerEvent* event) {
 	checkDirectionFile();
 	moveSnake();
@@ -303,15 +308,14 @@ void QSSnake::Canvas::timerEvent(QTimerEvent* event) {
 	repaint();
 }
 
-//====================================================================
+//Function added to set direction based on dirPart variable, which is set in thread by voltage readings
 void QSSnake::Canvas::checkDirectionFile() {
-	//int dirPart = 'F';	
-	//
+
 	double compSec;
 	time_t compT;
     
 
-//Relative to Absolute Directions
+	//Relative to Absolute Directions
 
 	
 	//Direction changed based on sensor readings
@@ -353,6 +357,7 @@ void QSSnake::Canvas::checkDirectionFile() {
 
 //=====================================================================
 
+// Move snake
 void QSSnake::Canvas::moveSnake() {
 	if(direction == 0)
 		return;
@@ -393,6 +398,7 @@ void QSSnake::Canvas::locateFood() {
 	food.setY((rand() % (height() / dots_size)) * dots_size);
 }
 
+// Collision detection
 void QSSnake::Canvas::checkCollisions() {
 	if(snake[0] == food) {
 		snake[snake_size] = QPoint(-100, -100);
@@ -414,6 +420,7 @@ void QSSnake::Canvas::checkCollisions() {
 	}*/
 }
 
+// Game bonuses to increase difficulty
 void QSSnake::Canvas::moveBonus() {	
 	if(rand() % 5 == 1)
 		bonus_direction = 0;
