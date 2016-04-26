@@ -13,23 +13,140 @@
 #include <iostream>
 #include <ctime>
 #include <QDebug>
+#include <QMutex>
+#include <QApplication>
+#include <QWidget>
+#include <linux/kernel.h> /* printk() */
+#include <linux/fs.h> /* everything... */
+#include <linux/errno.h> /* error codes */
+#include <linux/types.h> /* size_t */
+#include <stdio.h>
+#include <stdint.h>
+#include <string.h>
+#include <QThread>
+#include <fcntl.h>
+#include <sys/ioctl.h>
+#include "i2c-dev.h"
+
+int ADS_address = 0x4A;	// Address of our device on the I2C bus
+char dirPart = 'Q';
+QMutex mutex;
+double usec = 10000;
+
 using namespace std;
 
+class Thread : public QThread
+{
+	public:
+	    void run()
+			{
+				int I2CFile;
+				I2CFile = ::open("/dev/i2c-0", O_RDWR);
+				if (ioctl(I2CFile, I2C_SLAVE_FORCE, ADS_address) < 0) {
+				   printf("Failed to acquire bus access and/or talk to slave.\n");
+					/* ERROR HANDLING; you can check errno to see what went wrong */
+					exit(1);
+				}	
+
+				while(1){
+					usleep(usec);
+					uint8_t writeBuf[3];	// Buffer to store the 3 bytes that we write to the I2C device
+					uint8_t readBuf[2];		// 2 byte buffer to store the data read from the I2C device
+					int maxIter = 0;		
+					int16_t val;				// Stores the 16 bit value of our ADC conversion
+					int16_t val2;		
+					
+					// These three bytes are written to the ADS1115 to set the config register and start a conversion 
+					  writeBuf[0] = 1;			// This sets the pointer register so that the following two bytes write to the config register
+					  writeBuf[1] = 0xC2;   	// This sets the 8 MSBs of the config register (bits 15-8) to 1100 0010
+					  writeBuf[2] = 0x06;  		// This sets the 8 LSBs of the config register (bits 7-0) to 0000 0110
+					  //std::cout <<  (unsigned)writeBuf[0] << " " << (unsigned) writeBuf[1] << " " << (unsigned)writeBuf[2] << std::endl;
+	
+					  // Initialize the buffer used to read data from the ADS1115 to 0
+					  readBuf[0]= 0;		
+					  readBuf[1]= 0;
+					  						  
+					  // Write writeBuf to the ADS1115, the 3 specifies the number of bytes we are writing,
+					  // this begins a single conversion
+					  ::write(I2CFile, writeBuf, 3);	
+
+					  // Wait for the conversion to complete, this requires bit 15 to change from 0->1
+					  //maxIter limits # of read attempts
+					 while ((readBuf[0] & 0x80) == 0 && maxIter < 10)	// readBuf[0] contains 8 MSBs of config register, AND with 10000000 to select bit 15
+					 {
+						  ::read(I2CFile, readBuf, 2);	// Read the config register into readBuf
+						  maxIter++;						  	
+					}
+					maxIter =0;
+		
+				    writeBuf[0] = 0;					// Set pointer register to 0 to read from the conversion register
+				    ::write(I2CFile, writeBuf, 1);
+				    ::read(I2CFile, readBuf, 2);		// Read the contents of the conversion register into readBuf
+				    val = readBuf[0] << 8 | readBuf[1];	// Combine the two bytes of readBuf into a single 16 bit result 
+
+				    printf("Right Arm Voltage Reading %f (V) \n", (float)val*4.096/32767.0);	
+	 	
+				  	 // These three bytes are written to the ADS1115 to set the config register and start a conversion 
+				    writeBuf[0] = 1;			// This sets the pointer register so that the following two bytes write to the config register
+				    writeBuf[1] = 0xF2;   	// This sets the 8 MSBs of the config register (bits 15-8) to 1111 0010
+				    writeBuf[2] = 0x06;  		// This sets the 8 LSBs of the config register (bits 7-0) to 00000110
+				    	
+				    // Initialize the buffer used to read data from the ADS1115 to 0
+				    readBuf[0]= 0;		
+				    readBuf[1]= 0;
+					  
+				    // Write writeBuf to the ADS1115, the 3 specifies the number of bytes we are writing,
+				    // this begins a single conversion
+				    ::write(I2CFile, writeBuf, 3);	
+
+				    // Wait for the conversion to complete, this requires bit 15 to change from 0->1
+					//maxIter limits the # of read attempts
+					while ((readBuf[0] & 0x80) == 0 && maxIter < 10)	// readBuf[0] contains 8 MSBs of config register, AND with 10000000 to select bit 15
+					{
+						 ::read(I2CFile, readBuf, 2);	// Read the config register into readBuf
+						  maxIter++;						  	
+					}
+					maxIter =0;
+		
+				    writeBuf[0] = 0;					// Set pointer register to 0 to read from the conversion register
+					::write(I2CFile, writeBuf, 1);
+				    ::read(I2CFile, readBuf, 2);		// Read the contents of the conversion register into readBuf
+
+				    val2 = readBuf[0] << 8 | readBuf[1];	// Combine the two bytes of readBuf into a single 16 bit result 
+
+				    printf("Left Arm Voltage Reading %f (V) \n", (float)val2*4.096/32767.0);
+	
+					//If right arm flexed, turn right
+					if ((float)val*4.096/32767.0 > 1.5) {
+						dirPart = 'R';
+						usec = 400000;
+					} // If left arm flexed, turn left
+					else if ((float)val2*4.096/32767.0 > 1.5) {
+						dirPart = 'L';
+						usec = 400000;
+					} // else do nothing
+					else {
+						dirPart = 'Q';
+						usec = 0;
+					}
+				}
+				::close(I2CFile);
+	    	}
+};
+
+//Bulk of this code from https://github.com/Regalis/QSSnake. 
 QSSnake::QSSnake() : QMainWindow(0, 0) {
-	resize(600, 400);
-	setMinimumSize(600, 400);
-	setMaximumSize(600, 400);
-	setWindowTitle("QSSnake");
-	statusBar()->showMessage("Welcome in QSSnake...");
-	statusBar()->show();
+
+	resize(475, 235);
+	setMinimumSize(475, 235);
+	setMaximumSize(475, 235);
+	setWindowTitle("Welcome to MuscleSnake!!!");
 
 	setStatusTip("QSSnake v0.1");
 
 	QAction* new_game = new QAction("&New game", this);
-	//new_game->setIcon(QIcon::fromTheme("media-playback-start")); error compling with fromTheme
 	new_game->setStatusTip("Start new game");
 	QAction* quit = new QAction("&Quit", this);
-	//quit->setIcon(QIcon::fromTheme("application-exit"));
 	quit->setStatusTip("Close game");
 
 	QMenu* game = menuBar()->addMenu("&Game");
@@ -52,6 +169,11 @@ QSSnake::QSSnake() : QMainWindow(0, 0) {
 
 	canvas = new Canvas(this, scoreLabel);
 	setCentralWidget(canvas);
+
+	//thread created for i2c 
+	Thread *thread = new Thread;
+	thread->start();
+	
 
 	srand(time(NULL));
   	startGame();
@@ -170,8 +292,8 @@ void QSSnake::Canvas::timerEvent(QTimerEvent* event) {
 	ignore_keys = false;
 	if(score > 30 && direction != 0 && !bonus_in_game) {
 		if(rand() % 250 == 5) {
-			bonus_in_game = true;
-			initBonus();
+			//bonus_in_game = true;
+			//initBonus();
 		}
 	} else {
 		if(direction != 0)
@@ -183,84 +305,50 @@ void QSSnake::Canvas::timerEvent(QTimerEvent* event) {
 
 //====================================================================
 void QSSnake::Canvas::checkDirectionFile() {
-    QFile file("/dev/mygpio");
-    if (!file.open(QIODevice::ReadOnly | QIODevice::Text))
-        return;
-
-    QTextStream in(&file);
-    QString line = in.readLine();
-    long tsPart = line.split(" ")[0].toLong();
-    QString dirPart = line.split(" ")[1];
-	printf("Jiffies: %u\n", tsPart);
-	//printf("Direction: %c\n", dirPart);
-	qDebug() << dirPart;
-	printf("Time Stamp: %u\n", timeStamp);
-
-
-
+	//int dirPart = 'F';	
+	//
+	double compSec;
+	time_t compT;
     
-/*Aboslute Directions
-    if(line == "R"){
-		if(direction == 0x04 && snake_size > 1)
-		return;
-		direction = 0x01;
-		ignore_keys = true;
-	}
-	else if(line == "R"){
-		if(direction == 0x08 && snake_size > 1)
-		return;
-		direction = 0x02;
-		ignore_keys = true;
-	}
-	else if(line == "D"){
-		if(direction == 0x01 && snake_size > 1)
-		return;
-		direction = 0x04;
-		ignore_keys = true;
-	}
-	else if(line =="L"){
-		if(direction == 0x02 && snake_size > 1)
-		return;
-		direction = 0x08;
-		ignore_keys = true;
-	}*/
-    
+
 //Relative to Absolute Directions
-if(tsPart>timeStamp){
-	timeStamp = tsPart; /*update timeStamp*/
-    if(direction == 0x01 && dirPart == "R"){
+
+	
+	//Direction changed based on sensor readings
+    if(direction == 0x01 && dirPart == 'R'){
 		direction = 0x02;	
 		ignore_keys = true;
 	}
-	else if(direction == 0x02 && dirPart == "R"){
+	else if(direction == 0x02 && dirPart == 'R'){
 		direction = 0x04;
 		ignore_keys = true;
 	}
-	else if(direction == 0x04 && dirPart == "R"){
+	else if(direction == 0x04 && dirPart == 'R'){
 		direction = 0x08;
 		ignore_keys = true;
 	}
-	else if(direction == 0x08 && dirPart == "R"){
+	else if(direction == 0x08 && dirPart == 'R'){
 		direction = 0x01;
 		ignore_keys = true;
 	}
-	else if(direction == 0x01 && dirPart == "L"){
+	else if(direction == 0x01 && dirPart == 'L'){
 		direction = 0x08;	
 		ignore_keys = true;
 	}
-	else if(direction == 0x02 && dirPart == "L"){
+	else if(direction == 0x02 && dirPart == 'L'){
 		direction = 0x01;
 		ignore_keys = true;
 	}
-	else if(direction == 0x04 && dirPart == "L"){
+	else if(direction == 0x04 && dirPart == 'L'){
 		direction = 0x02;
 		ignore_keys = true;
 	}
-	else if(direction == 0x08 && dirPart == "L"){
+	else if(direction == 0x08 && dirPart == 'L'){
 		direction = 0x04;
 		ignore_keys = true;
 	}
-}
+	dirPart = 'Q';
+
 }
 
 //=====================================================================
@@ -316,14 +404,14 @@ void QSSnake::Canvas::checkCollisions() {
 		initGame();
 		in_game = true;
 	}
-	if(snake[0] == bonus) {
+	/*if(snake[0] == bonus) {
 		bonus_in_game = false;
 		score += 10;
 		for(int i = snake_size; i < snake_size + 5; ++i) {
 			snake[i] = QPoint(-100, -100);
 		}
 		snake_size += 5;
-	}
+	}*/
 }
 
 void QSSnake::Canvas::moveBonus() {	
